@@ -14,8 +14,8 @@ export default function AuraMinusApp() {
   const [progress, setProgress] = useState("");
   const [ai, setAi] = useState(null);
 
-  async function fileToBase64(file) {
-    const buffer = await file.arrayBuffer();
+  async function fileToBase64(inputFile) {
+    const buffer = await inputFile.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     let binary = "";
 
@@ -27,31 +27,42 @@ export default function AuraMinusApp() {
   }
 
   async function loadFFmpeg() {
+    if (typeof window === "undefined") {
+      throw new Error("FFmpeg hanya bisa jalan di browser");
+    }
+
     if (ffmpegRef.current) return ffmpegRef.current;
 
     setProgress("Load engine video...");
 
-    const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
-      import("@ffmpeg/ffmpeg"),
-      import("@ffmpeg/util")
-    ]);
+    const ffmpegModule = await import("@ffmpeg/ffmpeg");
+    const utilModule = await import("@ffmpeg/util");
 
-    const ffmpeg = new FFmpeg();
+    const ffmpeg = new ffmpegModule.FFmpeg();
     const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
 
     await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm")
+      coreURL: await utilModule.toBlobURL(
+        `${baseURL}/ffmpeg-core.js`,
+        "text/javascript"
+      ),
+      wasmURL: await utilModule.toBlobURL(
+        `${baseURL}/ffmpeg-core.wasm`,
+        "application/wasm"
+      )
     });
 
     ffmpegRef.current = ffmpeg;
-    ffmpegHelpersRef.current = { fetchFile };
+    ffmpegHelpersRef.current = {
+      fetchFile: utilModule.fetchFile
+    };
 
     return ffmpeg;
   }
 
   function safeText(text = "") {
     return String(text)
+      .replace(/\\/g, "\\\\")
       .replace(/:/g, "\\:")
       .replace(/'/g, "\\'")
       .replace(/,/g, "\\,")
@@ -77,7 +88,7 @@ export default function AuraMinusApp() {
     const data = await res.json();
 
     if (!data.success) {
-      throw new Error(data.error || "AI gagal");
+      throw new Error(data.error || "AI gagal analisa gameplay");
     }
 
     return data.ai;
@@ -125,7 +136,6 @@ export default function AuraMinusApp() {
       ]);
 
       const data = await ffmpeg.readFile("output.mp4");
-
       const url = URL.createObjectURL(
         new Blob([data.buffer], { type: "video/mp4" })
       );
