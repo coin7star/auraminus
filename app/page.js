@@ -1,11 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 export default function Home() {
-  const ffmpegRef = useRef(new FFmpeg());
+  const ffmpegRef = useRef(null);
+  const ffmpegHelpersRef = useRef(null);
 
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState("");
@@ -18,7 +17,6 @@ export default function Home() {
   async function fileToBase64(file) {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
-
     let binary = "";
 
     for (let i = 0; i < bytes.length; i++) {
@@ -29,14 +27,22 @@ export default function Home() {
   }
 
   async function loadFFmpeg() {
-    const ffmpeg = ffmpegRef.current;
+    if (typeof window === "undefined") {
+      throw new Error("FFmpeg hanya bisa jalan di browser");
+    }
 
-    if (ffmpeg.loaded) return ffmpeg;
+    if (ffmpegRef.current) return ffmpegRef.current;
 
     setProgress("Load engine video...");
 
-    const baseURL =
-      "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
+    const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
+      import("@ffmpeg/ffmpeg"),
+      import("@ffmpeg/util")
+    ]);
+
+    const ffmpeg = new FFmpeg();
+
+    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
 
     await ffmpeg.load({
       coreURL: await toBlobURL(
@@ -49,14 +55,19 @@ export default function Home() {
       )
     });
 
+    ffmpegRef.current = ffmpeg;
+    ffmpegHelpersRef.current = { fetchFile };
+
     return ffmpeg;
   }
 
   function safeText(text = "") {
-    return text
+    return String(text)
       .replace(/:/g, "\\:")
       .replace(/'/g, "\\'")
-      .replace(/,/g, "\\,");
+      .replace(/,/g, "\\,")
+      .replace(/\[/g, "\\[")
+      .replace(/\]/g, "\\]");
   }
 
   async function analyzeImage() {
@@ -95,23 +106,19 @@ export default function Home() {
       setAi(null);
 
       setProgress("AI lagi analisa gameplay...");
-
       const result = await analyzeImage();
-
       setAi(result);
 
       const ffmpeg = await loadFFmpeg();
+      const { fetchFile } = ffmpegHelpersRef.current;
 
       setProgress("Render video meme...");
 
-      await ffmpeg.writeFile(
-        "input.png",
-        await fetchFile(file)
-      );
+      await ffmpeg.writeFile("input.png", await fetchFile(file));
 
-      const top = safeText(result.captionTop);
-      const bottom = safeText(result.captionBottom);
-      const ending = safeText(result.endingText);
+      const top = safeText(result.captionTop || "Katanya last game");
+      const bottom = safeText(result.captionBottom || "Malah turun bintang");
+      const ending = safeText(result.endingText || "Aura turun drastis");
 
       await ffmpeg.exec([
         "-loop",
@@ -138,10 +145,10 @@ export default function Home() {
       );
 
       setVideoUrl(url);
-
       setProgress("Selesai 😭🔥");
     } catch (error) {
       alert(error.message || "Gagal generate");
+      setProgress("");
     } finally {
       setLoading(false);
     }
@@ -154,6 +161,8 @@ export default function Home() {
 
     setFile(selected);
     setPreview(URL.createObjectURL(selected));
+    setVideoUrl("");
+    setAi(null);
   }
 
   return (
@@ -171,9 +180,8 @@ export default function Home() {
           </h1>
 
           <p className="mt-5 max-w-2xl text-white/60">
-            Upload screenshot gameplay ML, PUBG, Valorant,
-            atau game lain lalu AI bakal bikin video meme
-            otomatis.
+            Upload screenshot gameplay ML, PUBG, Valorant, atau game lain lalu
+            AI bakal bikin video meme otomatis.
           </p>
 
           <div className="mt-10 grid gap-6 md:grid-cols-2">
@@ -190,19 +198,16 @@ export default function Home() {
                 onChange={(e) => setStyle(e.target.value)}
                 className="mt-5 w-full rounded-2xl bg-white/10 p-4"
               >
-                <option value="toxic roast">
+                <option className="bg-black" value="toxic roast">
                   Toxic Roast
                 </option>
-
-                <option value="sad moment">
+                <option className="bg-black" value="sad moment">
                   Sad Moment
                 </option>
-
-                <option value="epic fail">
+                <option className="bg-black" value="epic fail">
                   Epic Fail
                 </option>
-
-                <option value="sigma edit">
+                <option className="bg-black" value="sigma edit">
                   Sigma Edit
                 </option>
               </select>
@@ -210,17 +215,13 @@ export default function Home() {
               <button
                 onClick={generateVideo}
                 disabled={loading}
-                className="mt-5 w-full rounded-2xl bg-white px-5 py-4 font-black text-black"
+                className="mt-5 w-full rounded-2xl bg-white px-5 py-4 font-black text-black disabled:opacity-50"
               >
-                {loading
-                  ? "Generating..."
-                  : "Generate AuraMinus Video"}
+                {loading ? "Generating..." : "Generate AuraMinus Video"}
               </button>
 
               {progress && (
-                <p className="mt-4 text-sm text-white/60">
-                  {progress}
-                </p>
+                <p className="mt-4 text-sm text-white/60">{progress}</p>
               )}
             </div>
 
@@ -241,22 +242,10 @@ export default function Home() {
 
           {ai && (
             <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
-              <h2 className="text-2xl font-black">
-                {ai.title}
-              </h2>
-
-              <p className="mt-3 text-white/70">
-                {ai.captionTop}
-              </p>
-
-              <p className="text-white/70">
-                {ai.captionBottom}
-              </p>
-
-              <p className="text-white/70">
-                {ai.endingText}
-              </p>
-
+              <h2 className="text-2xl font-black">{ai.title}</h2>
+              <p className="mt-3 text-white/70">{ai.captionTop}</p>
+              <p className="text-white/70">{ai.captionBottom}</p>
+              <p className="text-white/70">{ai.endingText}</p>
               <p className="mt-3 text-sm text-white/40">
                 {ai.hashtags?.join(" ")}
               </p>
