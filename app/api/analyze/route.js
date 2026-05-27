@@ -13,34 +13,33 @@ export async function POST(req) {
     }
 
     const prompt = `
-Kamu adalah AI editor meme khusus Mobile Legends: Bang Bang untuk web AuraMinus.
+Kamu adalah AI editor video meme khusus Mobile Legends: Bang Bang untuk web AuraMinus.
 
 Tugas:
-Analisa gambar yang diupload user. Anggap ini konten Mobile Legends untuk test MVP.
+Analisa screenshot MLBB yang diupload user, lalu buat script video pendek 6 detik.
 
-Buat caption meme video pendek khusus MLBB.
-
-Style:
+Style user:
 ${style || "epic fail"}
 
 Aturan:
 - Bahasa Indonesia santai
 - Lucu, Gen Z, cocok TikTok
-- Fokus Mobile Legends
+- Fokus Mobile Legends saja
 - Jangan bahas game lain
 - Jangan SARA
 - Jangan hina fisik
 - Jangan seksual
-- Maksimal 8 kata per caption
+- Maksimal 7 kata per scene
+- Balas JSON valid saja
 
-Balas JSON valid saja.
-
-Format:
+Format JSON:
 {
   "title": "judul pendek",
-  "captionTop": "caption atas",
-  "captionBottom": "caption bawah",
-  "endingText": "caption ending",
+  "template": "epic_fail / win_streak / turun_bintang / dark_system / mvp_kalah",
+  "scene1": "opening hook",
+  "scene2": "analisa momen",
+  "scene3": "punchline lucu",
+  "endingText": "ending pendek",
   "hashtags": ["#AuraMinus", "#MobileLegends", "#MLBB"]
 }
 `;
@@ -80,8 +79,10 @@ Format:
     } catch {
       ai = {
         title: "MLBB Aura Minus",
-        captionTop: "Katanya jago mekanik",
-        captionBottom: "Pas war malah ilang",
+        template: "epic_fail",
+        scene1: "Katanya jago mekanik",
+        scene2: "Pas war malah hilang",
+        scene3: "Tim cuma bisa pasrah",
         endingText: "Aura turun satu rank 😭",
         hashtags: ["#AuraMinus", "#MobileLegends", "#MLBB"]
       };
@@ -90,7 +91,7 @@ Format:
     return Response.json({ success: true, ai });
   } catch {
     return Response.json(
-      { error: "Gagal analisa gambar MLBB" },
+      { error: "Gagal analisa screenshot MLBB" },
       { status: 500 }
     );
   }
