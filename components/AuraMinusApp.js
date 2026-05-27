@@ -13,6 +13,7 @@ export default function AuraMinusApp() {
   const [progress, setProgress] = useState("");
   const [ai, setAi] = useState(null);
   const [requestId, setRequestId] = useState("");
+  const [taskId, setTaskId] = useState("");
 
   async function fileToBase64(inputFile) {
     const buffer = await inputFile.arrayBuffer();
@@ -32,7 +33,6 @@ export default function AuraMinusApp() {
 
   function formatErrorDetail(data) {
     if (!data) return "";
-
     if (typeof data === "string") return data;
 
     try {
@@ -140,6 +140,81 @@ export default function AuraMinusApp() {
     }
 
     throw new Error("Timeout. Video Fal AI belum selesai.");
+  }
+
+  async function startPiapiGeneration() {
+    const imageBase64 = await fileToBase64(file);
+
+    const res = await fetch("/api/generate-piapi-video", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imageBase64,
+        mimeType: file.type,
+        style,
+        heroName
+      })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      const detail = formatErrorDetail(data.detail);
+      throw new Error(
+        `${data.error || "Gagal mulai PiAPI video"}${
+          detail ? `\n${detail}` : ""
+        }`
+      );
+    }
+
+    return data;
+  }
+
+  async function checkPiapiStatus(id) {
+    const res = await fetch("/api/check-piapi-video", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        taskId: id
+      })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      const detail = formatErrorDetail(data.detail);
+      throw new Error(
+        `${data.error || "Gagal cek status PiAPI"}${
+          detail ? `\n${detail}` : ""
+        }`
+      );
+    }
+
+    return data;
+  }
+
+  async function pollPiapiVideo(id) {
+    for (let i = 1; i <= 90; i++) {
+      setProgress(`PiAPI Kling lagi bikin video MLBB... (${i}/90)`);
+
+      const status = await checkPiapiStatus(id);
+
+      if (status.done && status.videoUrl) {
+        return status.videoUrl;
+      }
+
+      if (status.done && !status.videoUrl) {
+        throw new Error("PiAPI selesai, tapi videoUrl kosong");
+      }
+
+      await wait(4000);
+    }
+
+    throw new Error("Timeout. Video PiAPI belum selesai.");
   }
 
   function loadImage(src) {
@@ -376,6 +451,24 @@ export default function AuraMinusApp() {
     setProgress("Selesai. Video Fal AI siap!");
   }
 
+  async function generateWithPiapi() {
+    setProgress("Upload gambar + AI bikin prompt PiAPI...");
+    const result = await startPiapiGeneration();
+
+    setAi(result.ai);
+    setTaskId(result.taskId);
+
+    if (!result.taskId) {
+      throw new Error("PiAPI tidak mengirim taskId");
+    }
+
+    setProgress("PiAPI Kling mulai generate video...");
+    const finalVideoUrl = await pollPiapiVideo(result.taskId);
+
+    setVideoUrl(finalVideoUrl);
+    setProgress("Selesai. Video PiAPI siap!");
+  }
+
   async function generateVideo() {
     if (!file) {
       alert("Upload screenshot Mobile Legends dulu");
@@ -387,9 +480,12 @@ export default function AuraMinusApp() {
       setVideoUrl("");
       setAi(null);
       setRequestId("");
+      setTaskId("");
 
       if (engine === "fal") {
         await generateWithFal();
+      } else if (engine === "piapi") {
+        await generateWithPiapi();
       } else {
         await generateWithCanvas();
       }
@@ -412,6 +508,7 @@ export default function AuraMinusApp() {
     setAi(null);
     setProgress("");
     setRequestId("");
+    setTaskId("");
   }
 
   return (
@@ -428,7 +525,7 @@ export default function AuraMinusApp() {
 
           <p className="hero-desc">
             Upload screenshot Mobile Legends. Pilih engine gratis untuk test,
-            atau Fal AI untuk cinematic image-to-video.
+            Fal AI, atau PiAPI Kling untuk cinematic image-to-video.
           </p>
 
           <div className="grid">
@@ -456,6 +553,7 @@ export default function AuraMinusApp() {
               >
                 <option value="canvas">Canvas Test Gratis</option>
                 <option value="fal">Fal AI Cinematic</option>
+                <option value="piapi">PiAPI Kling</option>
               </select>
 
               <select
@@ -479,16 +577,16 @@ export default function AuraMinusApp() {
                   ? "Generating..."
                   : engine === "fal"
                   ? "Generate Fal AI Video"
+                  : engine === "piapi"
+                  ? "Generate PiAPI Video"
                   : "Generate Canvas Test"}
               </button>
 
               {progress && <p className="progress">{progress}</p>}
 
-              {requestId && (
-                <p className="progress">
-                  Request ID: {requestId}
-                </p>
-              )}
+              {requestId && <p className="progress">Fal Request ID: {requestId}</p>}
+
+              {taskId && <p className="progress">PiAPI Task ID: {taskId}</p>}
             </div>
 
             <div className="panel">
