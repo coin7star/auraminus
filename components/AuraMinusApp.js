@@ -58,7 +58,7 @@ export default function AuraMinusApp() {
     });
   }
 
-  function drawText(ctx, text, x, y, maxWidth, fontSize) {
+  function drawWrappedText(ctx, text, x, y, maxWidth, fontSize, color = "white") {
     ctx.font = `900 ${fontSize}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -84,17 +84,53 @@ export default function AuraMinusApp() {
     lines.forEach((item, index) => {
       const lineY = y + index * (fontSize + 10);
 
-      ctx.lineWidth = 8;
+      ctx.lineWidth = 9;
       ctx.strokeStyle = "black";
       ctx.strokeText(item, x, lineY);
 
-      ctx.fillStyle = "white";
+      ctx.fillStyle = color;
       ctx.fillText(item, x, lineY);
     });
   }
 
+  function getCurrentScene(result, percent) {
+    if (percent < 0.22) {
+      return {
+        text: result.scene1 || "Katanya jago mekanik",
+        y: 170,
+        size: 48,
+        color: "white"
+      };
+    }
+
+    if (percent < 0.48) {
+      return {
+        text: result.scene2 || "Pas war malah hilang",
+        y: 1040,
+        size: 44,
+        color: "white"
+      };
+    }
+
+    if (percent < 0.75) {
+      return {
+        text: result.scene3 || "Tim cuma bisa pasrah",
+        y: 1040,
+        size: 44,
+        color: "#facc15"
+      };
+    }
+
+    return {
+      text: result.endingText || "Aura turun satu rank 😭",
+      y: 1030,
+      size: 44,
+      color: "#4ade80"
+    };
+  }
+
   async function renderCanvasVideo(result) {
-    setProgress("Bikin video test MLBB...");
+    setProgress("AI script jadi video MLBB...");
 
     if (!window.MediaRecorder) {
       throw new Error("Browser ini belum support MediaRecorder");
@@ -129,14 +165,13 @@ export default function AuraMinusApp() {
     const done = new Promise((resolve) => {
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: "video/webm" });
-        const url = URL.createObjectURL(blob);
-        resolve(url);
+        resolve(URL.createObjectURL(blob));
       };
     });
 
     recorder.start();
 
-    const duration = 6000;
+    const duration = 6500;
     const start = performance.now();
 
     function drawFrame(now) {
@@ -151,7 +186,7 @@ export default function AuraMinusApp() {
         canvas.height / img.height
       );
 
-      const zoom = 1 + percent * 0.08;
+      const zoom = 1 + percent * 0.1;
       const width = img.width * scale * zoom;
       const height = img.height * scale * zoom;
       const x = (canvas.width - width) / 2;
@@ -159,21 +194,51 @@ export default function AuraMinusApp() {
 
       ctx.drawImage(img, x, y, width, height);
 
-      ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.36)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
-      ctx.fillRect(0, 0, canvas.width, 220);
-      ctx.fillRect(0, canvas.height - 300, canvas.width, 300);
-
-      drawText(ctx, result.captionTop, canvas.width / 2, 105, 640, 46);
-      drawText(ctx, result.captionBottom, canvas.width / 2, 1015, 640, 42);
-      drawText(ctx, result.endingText, canvas.width / 2, 1145, 640, 38);
+      ctx.fillRect(0, 0, canvas.width, 250);
+      ctx.fillRect(0, canvas.height - 340, canvas.width, 340);
 
       ctx.font = "900 30px Arial";
-      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
       ctx.textAlign = "center";
-      ctx.fillText("AuraMinus MLBB", canvas.width / 2, 1240);
+      ctx.fillStyle = "#4ade80";
+      ctx.fillText("AuraMinus MLBB", canvas.width / 2, 70);
+
+      drawWrappedText(
+        ctx,
+        result.title || "MLBB Aura Minus",
+        canvas.width / 2,
+        125,
+        640,
+        34,
+        "white"
+      );
+
+      const scene = getCurrentScene(result, percent);
+
+      drawWrappedText(
+        ctx,
+        scene.text,
+        canvas.width / 2,
+        scene.y,
+        640,
+        scene.size,
+        scene.color
+      );
+
+      ctx.font = "700 24px Arial";
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        result.hashtags?.slice(0, 3).join(" ") || "#AuraMinus #MLBB",
+        canvas.width / 2,
+        1225
+      );
+
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillRect(80, 1260, 560 * percent, 8);
 
       if (elapsed < duration) {
         requestAnimationFrame(drawFrame);
@@ -198,7 +263,7 @@ export default function AuraMinusApp() {
       setVideoUrl("");
       setAi(null);
 
-      setProgress("AI analisa gambar MLBB...");
+      setProgress("AI analisa screenshot MLBB...");
       const result = await analyzeImage();
 
       setAi(result);
@@ -206,9 +271,9 @@ export default function AuraMinusApp() {
       const url = await renderCanvasVideo(result);
 
       setVideoUrl(url);
-      setProgress("Selesai. Video test siap!");
+      setProgress("Selesai. Video MLBB siap!");
     } catch (error) {
-      alert(error.message || "Gagal generate video test");
+      alert(error.message || "Gagal generate video");
       setProgress("");
     } finally {
       setLoading(false);
@@ -244,8 +309,8 @@ export default function AuraMinusApp() {
           </h1>
 
           <p className="hero-desc">
-            Upload screenshot Mobile Legends: Bang Bang. AI akan bikin caption
-            meme MLBB lalu web membuat video test otomatis.
+            Upload screenshot Mobile Legends: Bang Bang. AI akan analisa gambar,
+            bikin script meme, lalu web otomatis membuat video pendek.
           </p>
 
           <div className="grid">
@@ -263,9 +328,10 @@ export default function AuraMinusApp() {
                 className="select"
               >
                 <option value="epic fail">Epic Fail MLBB</option>
-                <option value="toxic roast">Roast MLBB</option>
-                <option value="sad moment">Turun Bintang</option>
-                <option value="rank push">Push Rank Gagal</option>
+                <option value="win streak">Win Streak Flex</option>
+                <option value="turun bintang">Turun Bintang</option>
+                <option value="dark system">Dark System</option>
+                <option value="mvp kalah">MVP Tapi Kalah</option>
               </select>
 
               <button
@@ -293,8 +359,9 @@ export default function AuraMinusApp() {
           {ai && (
             <div className="result-card">
               <h2 className="result-title">{ai.title}</h2>
-              <p className="result-text">{ai.captionTop}</p>
-              <p className="result-text">{ai.captionBottom}</p>
+              <p className="result-text">{ai.scene1}</p>
+              <p className="result-text">{ai.scene2}</p>
+              <p className="result-text">{ai.scene3}</p>
               <p className="result-text">{ai.endingText}</p>
               <p className="hashtags">{ai.hashtags?.join(" ")}</p>
             </div>
@@ -309,7 +376,7 @@ export default function AuraMinusApp() {
                 download="auraminus-mlbb-video.webm"
                 className="download"
               >
-                Download Video Test
+                Download Video MLBB
               </a>
             </div>
           )}
