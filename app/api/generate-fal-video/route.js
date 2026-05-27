@@ -55,22 +55,24 @@ async function uploadToSupabase({ imageBase64, mimeType }) {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/auraminus-uploads/${fileName}`;
 }
 
-async function createPrompt({ imageBase64, mimeType, style }) {
+async function createPrompt({ imageBase64, mimeType, style, heroName }) {
   const prompt = `
 Kamu adalah AI editor cinematic Mobile Legends: Bang Bang.
 
-Analisa screenshot MLBB ini.
+Hero pilihan user:
+${heroName || "Tidak diisi, analisa dari gambar"}
+
+Style:
+${style}
 
 Buat:
 1. Judul pendek
 2. Caption Indonesia
 3. Prompt cinematic bahasa Inggris untuk AI video image-to-video
 
-Style:
-${style}
-
 WAJIB:
 - Fokus Mobile Legends: Bang Bang
+- Kalau heroName diisi, gunakan hero itu sebagai karakter utama
 - Hero/gameplay terasa hidup
 - Cinematic gaming edit
 - Aura glow
@@ -122,11 +124,12 @@ Balas JSON valid saja:
   try {
     return JSON.parse(cleanJson(raw));
   } catch {
+    const hero = heroName || "MLBB hero";
+
     return {
-      title: "Epic MLBB Montage",
-      caption: "Aura MLBB naik brutal 😭🔥",
-      videoPrompt:
-        "Epic cinematic Mobile Legends gameplay montage. Animate the uploaded MLBB screenshot with dynamic camera movement, subtle hero motion, glowing aura effects, energy particles, dramatic esports lighting, smooth motion, intense TikTok gaming edit style, no text overlay, no watermark.",
+      title: `${hero} Cinematic Montage`,
+      caption: `${hero} aura naik brutal 😭🔥`,
+      videoPrompt: `Epic cinematic Mobile Legends montage featuring ${hero}. Animate the uploaded MLBB screenshot with dynamic camera movement, subtle hero motion, glowing aura effects, energy particles, dramatic esports lighting, smooth motion, intense TikTok gaming edit style, no text overlay, no watermark.`,
       hashtags: ["#AuraMinus", "#MobileLegends", "#MLBB"]
     };
   }
@@ -136,7 +139,7 @@ export async function POST(req) {
   try {
     checkEnv();
 
-    const { imageBase64, mimeType, style } = await req.json();
+    const { imageBase64, mimeType, style, heroName } = await req.json();
 
     if (!imageBase64 || !mimeType) {
       return Response.json(
@@ -153,7 +156,8 @@ export async function POST(req) {
     const ai = await createPrompt({
       imageBase64,
       mimeType,
-      style: style || "epic cinematic"
+      style: style || "epic cinematic",
+      heroName
     });
 
     const falRes = await fetch(
