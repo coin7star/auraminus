@@ -8,6 +8,8 @@ export default function AuraMinusApp() {
   const [videoUrl, setVideoUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [style, setStyle] = useState("epic cinematic");
+  const [engine, setEngine] = useState("canvas");
+  const [heroName, setHeroName] = useState("");
   const [progress, setProgress] = useState("");
   const [ai, setAi] = useState(null);
   const [requestId, setRequestId] = useState("");
@@ -40,6 +42,31 @@ export default function AuraMinusApp() {
     }
   }
 
+  async function analyzeForCanvas() {
+    const imageBase64 = await fileToBase64(file);
+
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imageBase64,
+        mimeType: file.type,
+        style,
+        heroName
+      })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error(data.error || "AI gagal analisa gambar");
+    }
+
+    return data.ai;
+  }
+
   async function startFalGeneration() {
     const imageBase64 = await fileToBase64(file);
 
@@ -51,7 +78,8 @@ export default function AuraMinusApp() {
       body: JSON.stringify({
         imageBase64,
         mimeType: file.type,
-        style
+        style,
+        heroName
       })
     });
 
@@ -114,6 +142,240 @@ export default function AuraMinusApp() {
     throw new Error("Timeout. Video Fal AI belum selesai.");
   }
 
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Gagal load gambar"));
+
+      img.src = src;
+    });
+  }
+
+  function drawWrappedText(ctx, text, x, y, maxWidth, fontSize, color = "white") {
+    ctx.font = `900 ${fontSize}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const words = String(text || "").split(" ");
+    const lines = [];
+    let line = "";
+
+    for (const word of words) {
+      const testLine = line ? `${line} ${word}` : word;
+      const width = ctx.measureText(testLine).width;
+
+      if (width > maxWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = testLine;
+      }
+    }
+
+    if (line) lines.push(line);
+
+    lines.forEach((item, index) => {
+      const lineY = y + index * (fontSize + 10);
+
+      ctx.lineWidth = 9;
+      ctx.strokeStyle = "black";
+      ctx.strokeText(item, x, lineY);
+
+      ctx.fillStyle = color;
+      ctx.fillText(item, x, lineY);
+    });
+  }
+
+  function getCurrentScene(result, percent) {
+    if (percent < 0.25) {
+      return {
+        text: result.scene1 || `${heroName || "Hero"} mulai montage`,
+        y: 170,
+        size: 48,
+        color: "white"
+      };
+    }
+
+    if (percent < 0.5) {
+      return {
+        text: result.scene2 || "Musuh mulai panik",
+        y: 1040,
+        size: 44,
+        color: "white"
+      };
+    }
+
+    if (percent < 0.75) {
+      return {
+        text: result.scene3 || "Tim auto tepuk tangan",
+        y: 1040,
+        size: 44,
+        color: "#facc15"
+      };
+    }
+
+    return {
+      text: result.endingText || "Aura naik brutal 😭🔥",
+      y: 1030,
+      size: 44,
+      color: "#4ade80"
+    };
+  }
+
+  async function renderCanvasVideo(result) {
+    setProgress("Canvas Test bikin video MLBB...");
+
+    if (!window.MediaRecorder) {
+      throw new Error("Browser ini belum support MediaRecorder");
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 720;
+    canvas.height = 1280;
+
+    const ctx = canvas.getContext("2d");
+    const img = await loadImage(preview);
+    const stream = canvas.captureStream(30);
+
+    let mimeType = "video/webm";
+
+    if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9")) {
+      mimeType = "video/webm;codecs=vp9";
+    } else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8")) {
+      mimeType = "video/webm;codecs=vp8";
+    }
+
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+
+    const done = new Promise((resolve) => {
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "video/webm" });
+        resolve(URL.createObjectURL(blob));
+      };
+    });
+
+    recorder.start();
+
+    const duration = 6500;
+    const start = performance.now();
+
+    function drawFrame(now) {
+      const elapsed = now - start;
+      const percent = Math.min(elapsed / duration, 1);
+
+      ctx.fillStyle = "#050505";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const scale = Math.max(
+        canvas.width / img.width,
+        canvas.height / img.height
+      );
+
+      const zoom = 1 + percent * 0.1;
+      const width = img.width * scale * zoom;
+      const height = img.height * scale * zoom;
+      const x = (canvas.width - width) / 2;
+      const y = (canvas.height - height) / 2;
+
+      ctx.drawImage(img, x, y, width, height);
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.36)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+      ctx.fillRect(0, 0, canvas.width, 250);
+      ctx.fillRect(0, canvas.height - 340, canvas.width, 340);
+
+      ctx.font = "900 30px Arial";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#4ade80";
+      ctx.fillText("AuraMinus MLBB", canvas.width / 2, 70);
+
+      drawWrappedText(
+        ctx,
+        result.title || `${heroName || "MLBB"} Montage`,
+        canvas.width / 2,
+        125,
+        640,
+        34,
+        "white"
+      );
+
+      const scene = getCurrentScene(result, percent);
+
+      drawWrappedText(
+        ctx,
+        scene.text,
+        canvas.width / 2,
+        scene.y,
+        640,
+        scene.size,
+        scene.color
+      );
+
+      ctx.font = "700 24px Arial";
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        result.hashtags?.slice(0, 3).join(" ") || "#AuraMinus #MLBB",
+        canvas.width / 2,
+        1225
+      );
+
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillRect(80, 1260, 560 * percent, 8);
+
+      if (elapsed < duration) {
+        requestAnimationFrame(drawFrame);
+      } else {
+        recorder.stop();
+      }
+    }
+
+    requestAnimationFrame(drawFrame);
+
+    return done;
+  }
+
+  async function generateWithCanvas() {
+    setProgress("AI analisa screenshot MLBB...");
+    const result = await analyzeForCanvas();
+
+    setAi(result);
+
+    const url = await renderCanvasVideo(result);
+
+    setVideoUrl(url);
+    setProgress("Selesai. Video Canvas Test siap!");
+  }
+
+  async function generateWithFal() {
+    setProgress("Upload gambar + AI bikin prompt MLBB...");
+    const result = await startFalGeneration();
+
+    setAi(result.ai);
+    setRequestId(result.requestId);
+
+    if (!result.requestId) {
+      throw new Error("Fal AI tidak mengirim requestId");
+    }
+
+    setProgress("Fal AI mulai generate video cinematic...");
+    const finalVideoUrl = await pollFalVideo(result.requestId);
+
+    setVideoUrl(finalVideoUrl);
+    setProgress("Selesai. Video Fal AI siap!");
+  }
+
   async function generateVideo() {
     if (!file) {
       alert("Upload screenshot Mobile Legends dulu");
@@ -126,23 +388,13 @@ export default function AuraMinusApp() {
       setAi(null);
       setRequestId("");
 
-      setProgress("Upload gambar + AI bikin prompt MLBB...");
-      const result = await startFalGeneration();
-
-      setAi(result.ai);
-      setRequestId(result.requestId);
-
-      if (!result.requestId) {
-        throw new Error("Fal AI tidak mengirim requestId");
+      if (engine === "fal") {
+        await generateWithFal();
+      } else {
+        await generateWithCanvas();
       }
-
-      setProgress("Fal AI mulai generate video cinematic...");
-      const finalVideoUrl = await pollFalVideo(result.requestId);
-
-      setVideoUrl(finalVideoUrl);
-      setProgress("Selesai. Video AI MLBB siap!");
     } catch (error) {
-      alert(error.message || "Gagal generate video AI");
+      alert(error.message || "Gagal generate video");
       setProgress("");
     } finally {
       setLoading(false);
@@ -166,7 +418,7 @@ export default function AuraMinusApp() {
     <main>
       <section>
         <div className="card">
-          <div className="badge">AuraMinus MLBB + Fal AI</div>
+          <div className="badge">AuraMinus MLBB Editor</div>
 
           <h1 className="hero-title">
             MLBB Screenshot,
@@ -175,8 +427,8 @@ export default function AuraMinusApp() {
           </h1>
 
           <p className="hero-desc">
-            Upload screenshot Mobile Legends. Gemini akan analisa gambar, lalu
-            Fal AI mengubahnya jadi video cinematic image-to-video.
+            Upload screenshot Mobile Legends. Pilih engine gratis untuk test,
+            atau Fal AI untuk cinematic image-to-video.
           </p>
 
           <div className="grid">
@@ -187,6 +439,24 @@ export default function AuraMinusApp() {
                 onChange={handleFile}
                 className="input"
               />
+
+              <input
+                type="text"
+                value={heroName}
+                onChange={(e) => setHeroName(e.target.value)}
+                placeholder="Nama hero, contoh: Benedetta, Ling, Fanny"
+                className="input"
+                style={{ marginTop: "14px" }}
+              />
+
+              <select
+                value={engine}
+                onChange={(e) => setEngine(e.target.value)}
+                className="select"
+              >
+                <option value="canvas">Canvas Test Gratis</option>
+                <option value="fal">Fal AI Cinematic</option>
+              </select>
 
               <select
                 value={style}
@@ -205,7 +475,11 @@ export default function AuraMinusApp() {
                 disabled={loading}
                 className="button"
               >
-                {loading ? "Generating AI Video..." : "Generate Fal AI Video"}
+                {loading
+                  ? "Generating..."
+                  : engine === "fal"
+                  ? "Generate Fal AI Video"
+                  : "Generate Canvas Test"}
               </button>
 
               {progress && <p className="progress">{progress}</p>}
@@ -231,7 +505,14 @@ export default function AuraMinusApp() {
           {ai && (
             <div className="result-card">
               <h2 className="result-title">{ai.title}</h2>
-              <p className="result-text">{ai.caption}</p>
+              <p className="result-text">
+                {ai.caption || ai.scene1}
+              </p>
+              {ai.scene2 && <p className="result-text">{ai.scene2}</p>}
+              {ai.scene3 && <p className="result-text">{ai.scene3}</p>}
+              {ai.endingText && (
+                <p className="result-text">{ai.endingText}</p>
+              )}
               <p className="hashtags">{ai.hashtags?.join(" ")}</p>
             </div>
           )}
@@ -246,7 +527,7 @@ export default function AuraMinusApp() {
                 rel="noreferrer"
                 className="download"
               >
-                Buka / Download Video AI
+                Buka / Download Video
               </a>
             </div>
           )}
