@@ -6,25 +6,29 @@ function cleanJson(text = "") {
 
 export async function POST(req) {
   try {
-    const { imageBase64, mimeType, style } = await req.json();
+    const { imageBase64, mimeType, style, heroName } = await req.json();
 
     if (!imageBase64 || !mimeType) {
       return Response.json({ error: "Gambar belum dikirim" }, { status: 400 });
     }
 
     const prompt = `
-Kamu adalah AI editor video meme khusus Mobile Legends: Bang Bang untuk web AuraMinus.
+Kamu adalah AI editor meme khusus Mobile Legends: Bang Bang untuk web AuraMinus.
 
-Tugas:
-Analisa screenshot MLBB yang diupload user, lalu buat script video pendek 6 detik.
+Hero pilihan user:
+${heroName || "Tidak diisi, analisa dari gambar"}
 
-Style user:
+Style:
 ${style || "epic fail"}
 
+Tugas:
+Analisa screenshot MLBB ini lalu buat script video pendek.
+
 Aturan:
+- Fokus Mobile Legends saja
+- Kalau heroName diisi, gunakan hero itu sebagai konteks utama
 - Bahasa Indonesia santai
 - Lucu, Gen Z, cocok TikTok
-- Fokus Mobile Legends saja
 - Jangan bahas game lain
 - Jangan SARA
 - Jangan hina fisik
@@ -35,11 +39,11 @@ Aturan:
 Format JSON:
 {
   "title": "judul pendek",
-  "template": "epic_fail / win_streak / turun_bintang / dark_system / mvp_kalah",
   "scene1": "opening hook",
   "scene2": "analisa momen",
   "scene3": "punchline lucu",
   "endingText": "ending pendek",
+  "caption": "caption pendek",
   "hashtags": ["#AuraMinus", "#MobileLegends", "#MLBB"]
 }
 `;
@@ -77,13 +81,15 @@ Format JSON:
     try {
       ai = JSON.parse(cleanJson(raw));
     } catch {
+      const hero = heroName || "Hero MLBB";
+
       ai = {
-        title: "MLBB Aura Minus",
-        template: "epic_fail",
-        scene1: "Katanya jago mekanik",
-        scene2: "Pas war malah hilang",
-        scene3: "Tim cuma bisa pasrah",
+        title: `${hero} Aura Minus`,
+        scene1: `${hero} siap montage`,
+        scene2: "Musuh mulai panik",
+        scene3: "Tapi tim malah war random",
         endingText: "Aura turun satu rank 😭",
+        caption: `${hero} mode AuraMinus`,
         hashtags: ["#AuraMinus", "#MobileLegends", "#MLBB"]
       };
     }
