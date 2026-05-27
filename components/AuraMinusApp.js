@@ -50,8 +50,10 @@ export default function AuraMinusApp() {
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
+
       img.onload = () => resolve(img);
-      img.onerror = reject;
+      img.onerror = () => reject(new Error("Gagal load gambar"));
+
       img.src = src;
     });
   }
@@ -77,7 +79,7 @@ export default function AuraMinusApp() {
       }
     }
 
-    lines.push(line);
+    if (line) lines.push(line);
 
     lines.forEach((item, index) => {
       const lineY = y + index * (fontSize + 10);
@@ -94,6 +96,10 @@ export default function AuraMinusApp() {
   async function renderCanvasVideo(result) {
     setProgress("Bikin video test MLBB...");
 
+    if (!window.MediaRecorder) {
+      throw new Error("Browser ini belum support MediaRecorder");
+    }
+
     const canvas = document.createElement("canvas");
     canvas.width = 720;
     canvas.height = 1280;
@@ -102,20 +108,29 @@ export default function AuraMinusApp() {
     const img = await loadImage(preview);
 
     const stream = canvas.captureStream(30);
-    const recorder = new MediaRecorder(stream, {
-      mimeType: "video/webm"
-    });
 
+    let mimeType = "video/webm";
+
+    if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9")) {
+      mimeType = "video/webm;codecs=vp9";
+    } else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8")) {
+      mimeType = "video/webm;codecs=vp8";
+    }
+
+    const recorder = new MediaRecorder(stream, { mimeType });
     const chunks = [];
 
     recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunks.push(event.data);
+      if (event.data && event.data.size > 0) {
+        chunks.push(event.data);
+      }
     };
 
     const done = new Promise((resolve) => {
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: "video/webm" });
-        resolve(URL.createObjectURL(blob));
+        const url = URL.createObjectURL(blob);
+        resolve(url);
       };
     });
 
@@ -126,7 +141,7 @@ export default function AuraMinusApp() {
 
     function drawFrame(now) {
       const elapsed = now - start;
-      const progress = Math.min(elapsed / duration, 1);
+      const percent = Math.min(elapsed / duration, 1);
 
       ctx.fillStyle = "#050505";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -136,27 +151,27 @@ export default function AuraMinusApp() {
         canvas.height / img.height
       );
 
-      const zoom = 1 + progress * 0.08;
-      const w = img.width * scale * zoom;
-      const h = img.height * scale * zoom;
-      const x = (canvas.width - w) / 2;
-      const y = (canvas.height - h) / 2;
+      const zoom = 1 + percent * 0.08;
+      const width = img.width * scale * zoom;
+      const height = img.height * scale * zoom;
+      const x = (canvas.width - width) / 2;
+      const y = (canvas.height - height) / 2;
 
-      ctx.drawImage(img, x, y, w, h);
+      ctx.drawImage(img, x, y, width, height);
 
-      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      ctx.fillStyle = "rgba(0,0,0,0.65)";
-      ctx.fillRect(0, 0, canvas.width, 210);
-      ctx.fillRect(0, canvas.height - 260, canvas.width, 260);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.72)";
+      ctx.fillRect(0, 0, canvas.width, 220);
+      ctx.fillRect(0, canvas.height - 300, canvas.width, 300);
 
       drawText(ctx, result.captionTop, canvas.width / 2, 105, 640, 46);
-      drawText(ctx, result.captionBottom, canvas.width / 2, 1040, 640, 42);
-      drawText(ctx, result.endingText, canvas.width / 2, 1160, 640, 38);
+      drawText(ctx, result.captionBottom, canvas.width / 2, 1015, 640, 42);
+      drawText(ctx, result.endingText, canvas.width / 2, 1145, 640, 38);
 
-      ctx.font = "700 28px Arial";
-      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      ctx.font = "900 30px Arial";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
       ctx.textAlign = "center";
       ctx.fillText("AuraMinus MLBB", canvas.width / 2, 1240);
 
@@ -205,10 +220,15 @@ export default function AuraMinusApp() {
 
     if (!selected) return;
 
+    if (videoUrl) {
+      URL.revokeObjectURL(videoUrl);
+    }
+
     setFile(selected);
     setPreview(URL.createObjectURL(selected));
     setVideoUrl("");
     setAi(null);
+    setProgress("");
   }
 
   return (
