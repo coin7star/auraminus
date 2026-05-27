@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 export default function AuraMinusApp() {
   const [file, setFile] = useState(null);
@@ -14,12 +14,6 @@ export default function AuraMinusApp() {
   const [ai, setAi] = useState(null);
   const [requestId, setRequestId] = useState("");
   const [taskId, setTaskId] = useState("");
-  const [bgmEnabled, setBgmEnabled] = useState(true);
-  const [bgmPlaying, setBgmPlaying] = useState(false);
-
-  const videoRef = useRef(null);
-  const audioCtxRef = useRef(null);
-  const bgmNodesRef = useRef([]);
 
   async function fileToBase64(inputFile) {
     const buffer = await inputFile.arrayBuffer();
@@ -48,144 +42,15 @@ export default function AuraMinusApp() {
     }
   }
 
-  function stopBgm() {
-    try {
-      bgmNodesRef.current.forEach((node) => {
-        try {
-          node.stop?.();
-          node.disconnect?.();
-        } catch {}
-      });
-    } catch {}
+  function makeBlobUrlFromBase64(base64, mimeType = "video/mp4") {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
 
-    bgmNodesRef.current = [];
-    setBgmPlaying(false);
-  }
-
-  function getBgmPreset() {
-    const lower = style.toLowerCase();
-
-    if (lower.includes("dark")) {
-      return {
-        bpm: 92,
-        bass: 55,
-        lead: 220,
-        vibe: "Dark System"
-      };
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
     }
 
-    if (lower.includes("savage") || lower.includes("mvp")) {
-      return {
-        bpm: 140,
-        bass: 65,
-        lead: 330,
-        vibe: "Savage Beat"
-      };
-    }
-
-    if (lower.includes("turun")) {
-      return {
-        bpm: 78,
-        bass: 49,
-        lead: 196,
-        vibe: "Sad Rank"
-      };
-    }
-
-    return {
-      bpm: 128,
-      bass: 60,
-      lead: 260,
-      vibe: "Epic Cinematic"
-    };
-  }
-
-  function startAutoBgm() {
-    if (!bgmEnabled) return;
-
-    stopBgm();
-
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-
-    if (!AudioContext) {
-      alert("Browser belum support Web Audio");
-      return;
-    }
-
-    const ctx = new AudioContext();
-    audioCtxRef.current = ctx;
-
-    const preset = getBgmPreset();
-    const step = 60 / preset.bpm;
-    const totalBeats = 80;
-    const master = ctx.createGain();
-    master.gain.value = 0.12;
-    master.connect(ctx.destination);
-
-    function makeOsc({ freq, type, start, duration, gainValue }) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, start);
-      gain.gain.setValueAtTime(0.001, start);
-      gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
-
-      osc.connect(gain);
-      gain.connect(master);
-      osc.start(start);
-      osc.stop(start + duration + 0.05);
-
-      bgmNodesRef.current.push(osc, gain);
-    }
-
-    const now = ctx.currentTime + 0.08;
-
-    for (let i = 0; i < totalBeats; i++) {
-      const t = now + i * step;
-
-      if (i % 2 === 0) {
-        makeOsc({
-          freq: preset.bass,
-          type: "sawtooth",
-          start: t,
-          duration: step * 0.85,
-          gainValue: 0.22
-        });
-      }
-
-      if (i % 4 === 2) {
-        makeOsc({
-          freq: 95,
-          type: "triangle",
-          start: t,
-          duration: step * 0.18,
-          gainValue: 0.28
-        });
-      }
-
-      if (i % 4 === 0 || i % 4 === 3) {
-        makeOsc({
-          freq: preset.lead * (i % 8 === 0 ? 1.5 : 1),
-          type: "square",
-          start: t,
-          duration: step * 0.22,
-          gainValue: 0.08
-        });
-      }
-    }
-
-    setBgmPlaying(true);
-  }
-
-  async function playVideoWithBgm() {
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      await videoRef.current.play();
-    }
-
-    startAutoBgm();
+    return URL.createObjectURL(new Blob([bytes], { type: mimeType }));
   }
 
   async function analyzeForCanvas() {
@@ -361,6 +226,40 @@ export default function AuraMinusApp() {
     }
 
     throw new Error("Timeout. Video PiAPI belum selesai.");
+  }
+
+  async function generateWithHuggingFace() {
+    setProgress("HuggingFace SVD lagi bikin video...");
+
+    const imageBase64 = await fileToBase64(file);
+
+    const res = await fetch("/api/generate-hf-video", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imageBase64,
+        mimeType: file.type,
+        style,
+        heroName
+      })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      const detail = formatErrorDetail(data.detail);
+      throw new Error(
+        `${data.error || "HuggingFace gagal"}${detail ? `\n${detail}` : ""}`
+      );
+    }
+
+    setAi(data.ai);
+
+    const url = makeBlobUrlFromBase64(data.videoBase64, data.mimeType);
+    setVideoUrl(url);
+    setProgress("Selesai. Video HuggingFace siap!");
   }
 
   function loadImage(src) {
@@ -622,7 +521,6 @@ export default function AuraMinusApp() {
     }
 
     try {
-      stopBgm();
       setLoading(true);
       setVideoUrl("");
       setAi(null);
@@ -633,6 +531,8 @@ export default function AuraMinusApp() {
         await generateWithFal();
       } else if (engine === "piapi") {
         await generateWithPiapi();
+      } else if (engine === "hf") {
+        await generateWithHuggingFace();
       } else {
         await generateWithCanvas();
       }
@@ -649,7 +549,6 @@ export default function AuraMinusApp() {
 
     if (!selected) return;
 
-    stopBgm();
     setFile(selected);
     setPreview(URL.createObjectURL(selected));
     setVideoUrl("");
@@ -673,7 +572,7 @@ export default function AuraMinusApp() {
 
           <p className="hero-desc">
             Upload screenshot Mobile Legends. Pilih engine gratis untuk test,
-            Fal AI, atau PiAPI Kling untuk cinematic image-to-video.
+            Fal AI, PiAPI Kling, atau HuggingFace SVD.
           </p>
 
           <div className="grid">
@@ -700,6 +599,7 @@ export default function AuraMinusApp() {
                 className="select"
               >
                 <option value="canvas">Canvas Test Gratis</option>
+                <option value="hf">HuggingFace SVD</option>
                 <option value="fal">Fal AI Cinematic</option>
                 <option value="piapi">PiAPI Kling</option>
               </select>
@@ -716,16 +616,6 @@ export default function AuraMinusApp() {
                 <option value="turun bintang drama">Turun Bintang Drama</option>
               </select>
 
-              <label className="progress" style={{ display: "block" }}>
-                <input
-                  type="checkbox"
-                  checked={bgmEnabled}
-                  onChange={(e) => setBgmEnabled(e.target.checked)}
-                  style={{ marginRight: "8px" }}
-                />
-                Auto BGM preview sesuai style
-              </label>
-
               <button
                 onClick={generateVideo}
                 disabled={loading}
@@ -737,6 +627,8 @@ export default function AuraMinusApp() {
                   ? "Generate Fal AI Video"
                   : engine === "piapi"
                   ? "Generate PiAPI Video"
+                  : engine === "hf"
+                  ? "Generate HuggingFace Video"
                   : "Generate Canvas Test"}
               </button>
 
@@ -775,18 +667,7 @@ export default function AuraMinusApp() {
 
           {videoUrl && (
             <div className="result-card">
-              <video
-                ref={videoRef}
-                src={videoUrl}
-                controls
-                className="video"
-                onPause={stopBgm}
-                onEnded={stopBgm}
-              />
-
-              <button onClick={playVideoWithBgm} className="button">
-                {bgmPlaying ? "Replay Video + BGM" : "Play Video + Auto BGM"}
-              </button>
+              <video src={videoUrl} controls className="video" />
 
               <a
                 href={videoUrl}
@@ -796,10 +677,6 @@ export default function AuraMinusApp() {
               >
                 Buka / Download Video
               </a>
-
-              <p className="progress">
-                Catatan: BGM ini masih preview otomatis di web, belum nempel ke file download.
-              </p>
             </div>
           )}
         </div>
