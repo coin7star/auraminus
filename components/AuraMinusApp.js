@@ -28,6 +28,18 @@ export default function AuraMinusApp() {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function formatErrorDetail(data) {
+    if (!data) return "";
+
+    if (typeof data === "string") return data;
+
+    try {
+      return JSON.stringify(data, null, 2);
+    } catch {
+      return String(data);
+    }
+  }
+
   async function startFalGeneration() {
     const imageBase64 = await fileToBase64(file);
 
@@ -46,7 +58,12 @@ export default function AuraMinusApp() {
     const data = await res.json();
 
     if (!data.success) {
-      throw new Error(data.error || "Gagal mulai Fal AI video");
+      const detail = formatErrorDetail(data.detail);
+      throw new Error(
+        `${data.error || "Gagal mulai Fal AI video"}${
+          detail ? `\n${detail}` : ""
+        }`
+      );
     }
 
     return data;
@@ -66,7 +83,12 @@ export default function AuraMinusApp() {
     const data = await res.json();
 
     if (!data.success) {
-      throw new Error(data.error || "Gagal cek status Fal AI");
+      const detail = formatErrorDetail(data.detail);
+      throw new Error(
+        `${data.error || "Gagal cek status Fal AI"}${
+          detail ? `\n${detail}` : ""
+        }`
+      );
     }
 
     return data;
@@ -80,6 +102,10 @@ export default function AuraMinusApp() {
 
       if (status.done && status.videoUrl) {
         return status.videoUrl;
+      }
+
+      if (status.done && !status.videoUrl) {
+        throw new Error("Fal AI selesai, tapi videoUrl kosong");
       }
 
       await wait(4000);
@@ -105,6 +131,10 @@ export default function AuraMinusApp() {
 
       setAi(result.ai);
       setRequestId(result.requestId);
+
+      if (!result.requestId) {
+        throw new Error("Fal AI tidak mengirim requestId");
+      }
 
       setProgress("Fal AI mulai generate video cinematic...");
       const finalVideoUrl = await pollFalVideo(result.requestId);
